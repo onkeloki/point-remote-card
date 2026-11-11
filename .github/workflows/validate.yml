@@ -17,4 +17,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: node --check zeig-licht-card.js
+      - run: node --check point-remote-card.js
