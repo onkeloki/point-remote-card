@@ -5,6 +5,10 @@
 
 **Point your phone at a lamp, blind, TV or amplifier – and control it.**
 
+<p align="center">
+  <img src="point-remote-card-demo.gif" alt="Point Remote Card demo: aiming the phone at devices and controlling them" width="480">
+</p>
+
 A Home Assistant dashboard card that turns your phone into a pointing remote. No extra hardware, no beacons:
 the card reads the phone's compass and tilt sensors, so it knows where the top edge of the phone is pointing.
 You teach each device's direction once from a place (couch, kitchen, …), and from then on you just aim and tap.
