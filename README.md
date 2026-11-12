@@ -36,10 +36,10 @@ You teach each device's direction once from a place (couch, kitchen, …), and f
 
 ## Installation
 
-### HACS (custom repository)
+### Marketplace (custom repository)
 
-1. HACS → ⋮ → **Custom repositories**
-2. Repository: `https://github.com/onkeloki/point-remote-card`, type **Dashboard**
+1. Marketplace → **Install from link**
+2. Repository: `https://github.com/onkeloki/point-remote-card`
 3. Install **Point Remote Card** and reload the browser / app
 
 ### Manual
