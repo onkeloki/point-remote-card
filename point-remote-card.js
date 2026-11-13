@@ -1,15 +1,27 @@
 // Point Remote Card – point your phone at a device to control it.
 // Direction = top edge of the phone (compass + tilt). Each card is one place (couch, kitchen …): the direction of every
 // device is taught once from there and stored in the Home Assistant user data (frontend/set_user_data).
+// Camera mode: instead of the compass the card recognises the device in the camera picture. Every device is taught with a
+// few camera views; a small image-embedding model (MediaPipe, runs on the phone) compares the live picture with them.
 // https://github.com/onkeloki/point-remote-card  –  MIT License
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const HIT_DEG = 18;       // how far off you may point
 const RADAR_DEG = 60;     // radar radius in degrees
 const DWELL_MS = 250;     // a new target must be aimed at this long before it takes over
 const DOMAINS = ["light", "cover", "media_player", "switch", "fan", "climate", "input_boolean", "lock", "scene", "script", "button", "input_button"];
 const DEFAULT_COLORS = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be", "#007aff", "#5856d6", "#af52de", "#ff2d55"];
 const DEFAULT_POSITIONS = [0, 25, 50, 75, 100];
+// camera mode
+const CAM_LIB = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35";
+const CAM_MODEL = "https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite";
+const CAM_STORE = "point_remote_camera"; // views are shared by all camera cards of a user (they do not depend on the place)
+const CAM_MIN = 0.7;       // minimum similarity (0…1) for a hit
+const CAM_MARGIN = 0.03;   // below this lead over the second best device it is a close call
+const CAM_INTERVAL = 200;  // ms between two recognitions
+const CAM_CROP = 0.6;      // only the centre of the picture (the frame) is compared
+const CAM_SIZE = 224;      // input size of the model
+const CAM_VIEWS = 12;      // max. views per device (oldest is dropped)
 
 // ---------- translations (community additions welcome) ----------
 const TEXTS = {
@@ -35,6 +47,11 @@ const TEXTS = {
     lock: "Lock", unlock: "Unlock", playPause: "Play / Pause", mute: "Mute",
     description: "Point your phone at a device to control it",
     fName: "Name of this place (e.g. Couch, Kitchen)", fEntities: "Devices (empty = all)", fId: "Storage ID (keep when renaming)",
+    fMode: "Mode", modeCompass: "Compass – point the top edge of the phone", modeCamera: "Camera – recognise the device in the picture",
+    camStart: "Start camera", camStop: "Stop camera", camLoading: "Starting camera …", camTap: "Tap “Start camera” and allow access.",
+    camHelp: "Pick a device, aim the camera so the device fills the frame and save. Save 2–3 views from different spots and distances – the more views, the better the recognition, wherever you stand.",
+    camSave: "Save view", camFirst: "Start the camera first", camError: "Camera not available: ",
+    camSaved: (n, c) => `${n}: view ${c} saved`, views: (c) => (c === 1 ? "1 view" : `${c} views`), match: "match", noMatch: "no known device in the frame",
   },
   de: {
     defaultName: "Zeigen",
@@ -58,6 +75,11 @@ const TEXTS = {
     lock: "Abschließen", unlock: "Aufschließen", playPause: "Play / Pause", mute: "Stumm",
     description: "Mit dem Handy auf ein Gerät zeigen und steuern",
     fName: "Name des Platzes (z. B. Couch, Küche)", fEntities: "Geräte (leer = alle)", fId: "Speicher-ID (beim Umbenennen behalten)",
+    fMode: "Modus", modeCompass: "Kompass – mit der Oberkante des Handys zeigen", modeCamera: "Kamera – Gerät im Bild erkennen",
+    camStart: "Kamera starten", camStop: "Kamera stoppen", camLoading: "Kamera startet …", camTap: "„Kamera starten“ tippen und erlauben.",
+    camHelp: "Gerät wählen, die Kamera so ausrichten, dass das Gerät den Rahmen füllt, und speichern. 2–3 Ansichten von verschiedenen Plätzen und Abständen speichern – je mehr Ansichten, desto besser die Erkennung, egal wo du stehst.",
+    camSave: "Ansicht speichern", camFirst: "Erst die Kamera starten", camError: "Kamera nicht verfügbar: ",
+    camSaved: (n, c) => `${n}: Ansicht ${c} gespeichert`, views: (c) => (c === 1 ? "1 Ansicht" : `${c} Ansichten`), match: "Treffer", noMatch: "kein bekanntes Gerät im Rahmen",
   },
   nl: {
     defaultName: "Aanwijzen",
@@ -81,6 +103,11 @@ const TEXTS = {
     lock: "Vergrendelen", unlock: "Ontgrendelen", playPause: "Afspelen / Pauze", mute: "Dempen",
     description: "Wijs met je telefoon een apparaat aan om het te bedienen",
     fName: "Naam van deze plek (bijv. Bank, Keuken)", fEntities: "Apparaten (leeg = alle)", fId: "Opslag-ID (behouden bij hernoemen)",
+    fMode: "Modus", modeCompass: "Kompas – wijs met de bovenkant van de telefoon", modeCamera: "Camera – herken het apparaat in het beeld",
+    camStart: "Camera starten", camStop: "Camera stoppen", camLoading: "Camera start …", camTap: "Tik op „Camera starten” en sta toegang toe.",
+    camHelp: "Kies een apparaat, richt de camera zo dat het apparaat het kader vult en sla op. Sla 2–3 beelden op vanaf verschillende plekken en afstanden – hoe meer beelden, hoe beter de herkenning, waar je ook staat.",
+    camSave: "Beeld opslaan", camFirst: "Start eerst de camera", camError: "Camera niet beschikbaar: ",
+    camSaved: (n, c) => `${n}: beeld ${c} opgeslagen`, views: (c) => (c === 1 ? "1 beeld" : `${c} beelden`), match: "overeenkomst", noMatch: "geen bekend apparaat in het kader",
   },
   fr: {
     defaultName: "Pointer",
@@ -104,6 +131,11 @@ const TEXTS = {
     lock: "Verrouiller", unlock: "Déverrouiller", playPause: "Lecture / Pause", mute: "Muet",
     description: "Pointez votre téléphone vers un appareil pour le contrôler",
     fName: "Nom de cet endroit (ex. Canapé, Cuisine)", fEntities: "Appareils (vide = tous)", fId: "ID de stockage (à garder si renommé)",
+    fMode: "Mode", modeCompass: "Boussole – pointer avec le haut du téléphone", modeCamera: "Caméra – reconnaître l’appareil dans l’image",
+    camStart: "Démarrer la caméra", camStop: "Arrêter la caméra", camLoading: "Démarrage de la caméra …", camTap: "Touchez « Démarrer la caméra » et autorisez l’accès.",
+    camHelp: "Choisissez un appareil, cadrez-le pour qu’il remplisse le cadre et enregistrez. Enregistrez 2–3 vues depuis différents endroits et distances – plus il y a de vues, meilleure est la reconnaissance, où que vous soyez.",
+    camSave: "Enregistrer la vue", camFirst: "Démarrez d’abord la caméra", camError: "Caméra non disponible : ",
+    camSaved: (n, c) => `${n} : vue ${c} enregistrée`, views: (c) => (c === 1 ? "1 vue" : `${c} vues`), match: "correspondance", noMatch: "aucun appareil connu dans le cadre",
   },
   es: {
     defaultName: "Apuntar",
@@ -127,6 +159,11 @@ const TEXTS = {
     lock: "Bloquear", unlock: "Desbloquear", playPause: "Reproducir / Pausa", mute: "Silenciar",
     description: "Apunta con tu móvil a un dispositivo para controlarlo",
     fName: "Nombre de este lugar (p. ej. Sofá, Cocina)", fEntities: "Dispositivos (vacío = todos)", fId: "ID de almacenamiento (mantener al renombrar)",
+    fMode: "Modo", modeCompass: "Brújula – apuntar con el borde superior del móvil", modeCamera: "Cámara – reconocer el dispositivo en la imagen",
+    camStart: "Iniciar cámara", camStop: "Detener cámara", camLoading: "Iniciando cámara …", camTap: "Toca «Iniciar cámara» y permite el acceso.",
+    camHelp: "Elige un dispositivo, encuadra la cámara para que el dispositivo llene el marco y guarda. Guarda 2–3 vistas desde distintos lugares y distancias – cuantas más vistas, mejor el reconocimiento, estés donde estés.",
+    camSave: "Guardar vista", camFirst: "Inicia primero la cámara", camError: "Cámara no disponible: ",
+    camSaved: (n, c) => `${n}: vista ${c} guardada`, views: (c) => (c === 1 ? "1 vista" : `${c} vistas`), match: "coincidencia", noMatch: "ningún dispositivo conocido en el marco",
   },
   it: {
     defaultName: "Punta",
@@ -150,6 +187,11 @@ const TEXTS = {
     lock: "Blocca", unlock: "Sblocca", playPause: "Play / Pausa", mute: "Muto",
     description: "Punta il telefono verso un dispositivo per controllarlo",
     fName: "Nome di questo punto (es. Divano, Cucina)", fEntities: "Dispositivi (vuoto = tutti)", fId: "ID di salvataggio (mantienilo se rinomini)",
+    fMode: "Modalità", modeCompass: "Bussola – punta con il bordo superiore del telefono", modeCamera: "Fotocamera – riconosci il dispositivo nell’immagine",
+    camStart: "Avvia fotocamera", camStop: "Ferma fotocamera", camLoading: "Avvio fotocamera …", camTap: "Tocca «Avvia fotocamera» e consenti l’accesso.",
+    camHelp: "Scegli un dispositivo, inquadralo in modo che riempia la cornice e salva. Salva 2–3 viste da punti e distanze diversi – più viste ci sono, migliore è il riconoscimento, ovunque ti trovi.",
+    camSave: "Salva vista", camFirst: "Avvia prima la fotocamera", camError: "Fotocamera non disponibile: ",
+    camSaved: (n, c) => `${n}: vista ${c} salvata`, views: (c) => (c === 1 ? "1 vista" : `${c} viste`), match: "corrispondenza", noMatch: "nessun dispositivo noto nella cornice",
   },
 };
 
@@ -170,20 +212,47 @@ const browserLang = (navigator.language || "en").slice(0, 2);
 const textsFor = (lang) => TEXTS[(lang || browserLang).slice(0, 2)] || TEXTS.en;
 const COLOR_MODES = ["hs", "rgb", "rgbw", "rgbww", "xy"];
 
+// camera mode: the model is loaded once (only when a camera card starts) and shared by all cards
+const embedders = {};
+const loadEmbedder = (lib, model) => {
+  const key = lib + "|" + model;
+  embedders[key] ||= (async () => {
+    const mp = await import(/* webpackIgnore: true */ `${lib}/vision_bundle.mjs`);
+    const files = await mp.FilesetResolver.forVisionTasks(`${lib}/wasm`);
+    return mp.ImageEmbedder.createFromOptions(files, { baseOptions: { modelAssetPath: model, delegate: "CPU" }, runningMode: "IMAGE", l2Normalize: true });
+  })().catch((e) => { delete embedders[key]; throw e; });
+  return embedders[key];
+};
+const unit = (v) => { let n = 0; for (const x of v) n += x * x; n = Math.sqrt(n) || 1; return Float32Array.from(v, (x) => x / n); };
+const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
+// views are stored compactly as base64 int8 (direction only, the length does not matter for the cosine similarity)
+const encView = (v) => {
+  let m = 1e-9;
+  for (const x of v) m = Math.max(m, Math.abs(x));
+  const b = new Int8Array(v.length);
+  for (let i = 0; i < v.length; i++) b[i] = Math.round((v[i] / m) * 127);
+  let s = "";
+  for (const x of new Uint8Array(b.buffer)) s += String.fromCharCode(x);
+  return btoa(s);
+};
+const decView = (s) => { const bin = atob(s); return unit(Array.from(bin, (c) => (c.charCodeAt(0) << 24) >> 24)); };
+
 class PointRemoteCard extends HTMLElement {
   static getStubConfig() {
     return { name: textsFor().defaultName };
   }
   static getConfigForm() {
+    const T = textsFor();
     return {
       schema: [
+        { name: "mode", selector: { select: { mode: "dropdown", options: [{ value: "compass", label: T.modeCompass }, { value: "camera", label: T.modeCamera }] } } },
         { name: "name", selector: { text: {} } },
         { name: "entities", selector: { entity: { multiple: true, filter: { domain: DOMAINS } } } },
         { name: "id", selector: { text: {} } },
       ],
       computeLabel: (s, hass) => {
         const T = textsFor(hass?.locale?.language || hass?.language);
-        return { name: T.fName, entities: T.fEntities, id: T.fId }[s.name];
+        return { mode: T.fMode, name: T.fName, entities: T.fEntities, id: T.fId }[s.name];
       },
     };
   }
@@ -199,7 +268,8 @@ class PointRemoteCard extends HTMLElement {
     const id = this._config.id || slug(this._config.name) || "default";
     if (this._storeKey && this._storeKey !== "point_remote_" + id) { this._data = null; this._loaded = false; }
     this._storeKey = "point_remote_" + id;
-    if (this.shadowRoot) { this._renderTitle(); if (this._hass) this._load(); }
+    this._mode = this._config.mode === "camera" ? "camera" : "compass";
+    if (this.shadowRoot) { this._renderTitle(); this._applyMode(); if (this._hass) this._load(); }
   }
   getCardSize() {
     return 10;
@@ -219,20 +289,24 @@ class PointRemoteCard extends HTMLElement {
   }
 
   connectedCallback() {
-    if (this._perm === "ok") this._sensorStart();
+    if (this._mode === "camera") { if (this._camWanted) this._camStart(); }
+    else if (this._perm === "ok") this._sensorStart();
   }
   disconnectedCallback() {
     this._sensorStop();
+    this._camStop();
   }
 
   // ---------- data ----------
+  async _get(k) {
+    try { return (await this._hass.connection.sendMessagePromise({ type: "frontend/get_user_data", key: k }))?.value || null; }
+    catch (e) { return null; }
+  }
   async _load() {
     this._loaded = true;
+    if (this._mode === "camera") return this._loadCam();
     const key = this._storeKey;
-    const get = async (k) => {
-      try { return (await this._hass.connection.sendMessagePromise({ type: "frontend/get_user_data", key: k }))?.value || null; }
-      catch (e) { return null; }
-    };
+    const get = (k) => this._get(k);
     let data = await get(key);
     // migration from "zeig-licht-card" 1.x (one spot list) into the default card
     if (!data && key === "point_remote_default") {
@@ -245,12 +319,26 @@ class PointRemoteCard extends HTMLElement {
     this._renderList();
     this._render();
   }
-  async _save() {
+  async _save(key = this._storeKey, value = this._data) {
     try {
-      await this._hass.connection.sendMessagePromise({ type: "frontend/set_user_data", key: this._storeKey, value: this._data });
+      await this._hass.connection.sendMessagePromise({ type: "frontend/set_user_data", key, value });
+      return true;
     } catch (e) {
       this._toast(this._t.saveFailed + (e.message || e.code || e));
+      return false;
     }
+  }
+  async _loadCam() {
+    const data = await this._get(CAM_STORE);
+    this._setCam(data?.devices ? data : { devices: {} });
+  }
+  _setCam(data) {
+    this._cam = data;
+    this._camVecs = {};
+    for (const [ent, d] of Object.entries(data.devices)) this._camVecs[ent] = (d.views || []).map(decView);
+    this._camScore = {};
+    this._renderList();
+    this._render();
   }
 
   // ---------- sensors ----------
@@ -311,17 +399,105 @@ class PointRemoteCard extends HTMLElement {
       .map(([ent, r]) => ({ ent, w: angle(this._aim, r) }))
       .sort((a, b) => a.w - b.w);
     const best = list[0] && list[0].w <= HIT_DEG ? list[0] : null;
-    this._aiming = !!best;
-    this._unsure = !!(best && list[1] && list[1].w - best.w < 5);
-    if (!best) { this._cand = null; return; }
-    if (best.ent === this._target) { this._cand = null; return; }
+    this._choose(best?.ent, !!(best && list[1] && list[1].w - best.w < 5));
+  }
+  _choose(ent, unsure) {
+    this._aiming = !!ent;
+    this._unsure = !!(ent && unsure);
+    if (!ent || ent === this._target) { this._cand = null; return; }
     const now = Date.now();
-    if (this._cand?.ent !== best.ent) this._cand = { ent: best.ent, since: now };
+    if (this._cand?.ent !== ent) this._cand = { ent, since: now };
     if (!this._target || now - this._cand.since >= DWELL_MS) {
-      this._target = best.ent;
+      this._target = ent;
       this._cand = null;
       this._haptic("selection");
     }
+  }
+
+  // ---------- camera ----------
+  _camAllowed(ent) {
+    const allowed = Object.keys(this._opts);
+    return !!this._hass.states[ent] && (!allowed.length || allowed.includes(ent));
+  }
+  async _camStart() {
+    if (this._stream || this._camState === "loading") return;
+    const T = this._t;
+    this._camWanted = true;
+    this._camState = "loading";
+    this._render();
+    const model = loadEmbedder(this._config.camera_lib || CAM_LIB, this._config.camera_model || CAM_MODEL);
+    let stream;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error(window.isSecureContext ? "getUserMedia" : "http");
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 640 } } });
+      if (!this.isConnected || !this._camWanted || this._mode !== "camera") { stream.getTracks().forEach((t) => t.stop()); this._camState = "off"; return; }
+      this._stream = stream;
+      const v = this.$("#video");
+      v.srcObject = stream;
+      await v.play().catch(() => {});
+      this._embedder = await model;
+      if (this._stream !== stream) return; // stopped meanwhile
+      this._camState = "on";
+      this._camScore = {};
+      this._camTick();
+    } catch (e) {
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      this._stream = null;
+      this._camState = "error";
+      this._camWanted = false;
+      this._toast(T.camError + (e.message || e.name || e) + (window.isSecureContext ? "" : T.needHttps));
+    }
+    this._render();
+  }
+  _camStop(byUser) {
+    if (byUser) this._camWanted = false;
+    clearTimeout(this._camTimer);
+    this._camTimer = null;
+    if (this._stream) this._stream.getTracks().forEach((t) => t.stop());
+    this._stream = null;
+    const v = this.shadowRoot?.querySelector("#video");
+    if (v) v.srcObject = null;
+    if (this._camState === "on" || this._camState === "loading") this._camState = "off";
+    this._aiming = false;
+    this._camTop = null;
+    this._render();
+  }
+  _camTick() {
+    if (!this._stream) return;
+    this._camTimer = setTimeout(() => this._camTick(), CAM_INTERVAL);
+    let e;
+    try { e = this._embedFrame(); } catch (err) { console.warn("point-remote-card:", err); return; }
+    if (!e) return;
+    if (this._camSamples) this._camSamples.push(e);
+    this._camMatch(e);
+    if (!this._raf) this._raf = requestAnimationFrame(() => { this._raf = null; this._render(); });
+  }
+  // the centre square of the picture (= the frame drawn over the video) as model input
+  _embedFrame() {
+    const v = this.$("#video");
+    if (!v || v.readyState < 2 || !v.videoWidth) return null;
+    const c = (this._crop ||= Object.assign(document.createElement("canvas"), { width: CAM_SIZE, height: CAM_SIZE }));
+    const side = Math.min(v.videoWidth, v.videoHeight) * CAM_CROP;
+    c.getContext("2d").drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, CAM_SIZE, CAM_SIZE);
+    const emb = this._embedder.embed(c).embeddings?.[0]?.floatEmbedding;
+    return emb ? unit(emb) : null;
+  }
+  _camMatch(e) {
+    const scores = [];
+    for (const [ent, views] of Object.entries(this._camVecs || {})) {
+      if (!views.length || !this._camAllowed(ent)) continue;
+      let best = -1;
+      for (const v of views) best = Math.max(best, dot(e, v));
+      const prev = this._camScore[ent];
+      const sc = prev == null ? best : prev * 0.5 + best * 0.5; // a little smoothing against flicker
+      this._camScore[ent] = sc;
+      scores.push({ ent, sc });
+    }
+    scores.sort((a, b) => b.sc - a.sc);
+    this._camTop = scores[0] || null;
+    const thr = Number(this._config.camera_threshold) || CAM_MIN;
+    const best = scores[0] && scores[0].sc >= thr ? scores[0] : null;
+    this._choose(best?.ent, !!(best && scores[1] && best.sc - scores[1].sc < CAM_MARGIN));
   }
 
   _haptic(type) {
@@ -430,6 +606,7 @@ class PointRemoteCard extends HTMLElement {
 
   // ---------- teaching ----------
   async _teach() {
+    if (this._mode === "camera") return this._teachCam();
     const T = this._t;
     const ent = this.$("#entity").value;
     if (!ent) return this._toast(T.pickFirst);
@@ -453,7 +630,51 @@ class PointRemoteCard extends HTMLElement {
     this._toast(T.saved(this._name(ent), Math.round(r.h), Math.round(r.p)));
     this._renderList();
   }
+  async _teachCam() {
+    const T = this._t;
+    const ent = this.$("#entity").value;
+    if (!ent) return this._toast(T.pickFirst);
+    if (this._camState !== "on") return this._toast(T.camFirst);
+    const b = this.$("#teach");
+    b.disabled = true;
+    b.textContent = T.holdStill;
+    this._camSamples = [];
+    await new Promise((r) => setTimeout(r, 1000));
+    const samples = this._camSamples;
+    this._camSamples = null;
+    // small preview picture of the frame for the list
+    let thumb = null;
+    try {
+      const t = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
+      t.getContext("2d").drawImage(this._crop, 0, 0, 64, 64);
+      thumb = t.toDataURL("image/jpeg", 0.6);
+    } catch (e) { /* no preview */ }
+    b.disabled = false;
+    b.textContent = T.camSave;
+    if (!samples || samples.length < 2) return this._toast(T.tooFew);
+    const sum = new Float32Array(samples[0].length);
+    for (const v of samples) for (let i = 0; i < v.length; i++) sum[i] += v[i];
+    // re-read first, so views taught meanwhile on another card or device are kept
+    const fresh = await this._get(CAM_STORE);
+    const data = fresh?.devices ? fresh : this._cam || { devices: {} };
+    const dev = (data.devices[ent] ||= { views: [] });
+    dev.views.push(encView(sum));
+    while (dev.views.length > CAM_VIEWS) dev.views.shift();
+    if (thumb) dev.thumb = thumb;
+    if (!(await this._save(CAM_STORE, data))) return;
+    this._setCam(data);
+    this._haptic("success");
+    this._toast(T.camSaved(this._name(ent), dev.views.length));
+  }
   async _remove(ent) {
+    if (this._mode === "camera") {
+      const fresh = await this._get(CAM_STORE);
+      const data = fresh?.devices ? fresh : this._cam;
+      delete data.devices[ent];
+      if (this._target === ent) this._target = null;
+      if (await this._save(CAM_STORE, data)) this._setCam(data);
+      return;
+    }
     delete this._data.targets[ent];
     if (this._target === ent) this._target = null;
     await this._save();
@@ -508,6 +729,14 @@ class PointRemoteCard extends HTMLElement {
   .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .chip { border: 1px solid var(--divider-color); background: none; border-radius: 18px; padding: 8px 14px; font-size: 14px; }
   .chip.on { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+  .cam { position: relative; width: 100%; max-width: 320px; aspect-ratio: 1; margin: 0 auto; border-radius: 16px; overflow: hidden; background: #111; }
+  .cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam .frame { position: absolute; inset: ${((1 - CAM_CROP) / 2) * 100}%; border: 2px solid rgba(255,255,255,.85); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0,0,0,.28); pointer-events: none; transition: border-color .2s; }
+  .cam .frame.hit { border-color: var(--state-light-active-color, #ffb300); border-width: 3px; }
+  .cam .start { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; }
+  .cam .stop { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.5); color: #fff; padding: 0; display: flex; align-items: center; justify-content: center; }
+  li img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; margin-right: 10px; vertical-align: middle; }
+  li span { display: flex; align-items: center; }
   .start { font-size: 18px; padding: 18px; border-radius: 14px; border: none; background: var(--primary-color); color: var(--text-primary-color, #fff); }
   .hint { font-size: 13px; color: var(--secondary-text-color); text-align: center; }
   details { border-top: 1px solid var(--divider-color); padding-top: 10px; }
@@ -526,13 +755,19 @@ class PointRemoteCard extends HTMLElement {
   <div class="title" id="title"></div>
   <button class="start" id="start">${T.enable}</button>
   <div class="radar"><svg viewBox="-110 -110 220 220" id="radar"></svg></div>
+  <div class="cam" id="cam">
+    <video id="video" muted playsinline autoplay></video>
+    <div class="frame" id="frame"></div>
+    <button class="start" id="camStart">${T.camStart}</button>
+    <button class="stop" id="camStop" aria-label="${T.camStop}"><ha-icon icon="mdi:stop"></ha-icon></button>
+  </div>
   <div class="target" id="target"></div>
   <div id="controls"></div>
   <div class="hint" id="compass"></div>
   <details>
     <summary>${T.teachTitle}</summary>
     <div class="teach">
-      <div class="hint" style="text-align:left">${T.teachHelp}</div>
+      <div class="hint" style="text-align:left" id="teachHelp"></div>
       <select id="entity"></select>
       <button id="teach">${T.save}</button>
       <ul id="list"></ul>
@@ -542,14 +777,38 @@ class PointRemoteCard extends HTMLElement {
 </ha-card>`;
     this._renderTitle();
     this.$("#start").addEventListener("click", () => this._allow());
+    this.$("#camStart").addEventListener("click", () => this._camStart());
+    this.$("#camStop").addEventListener("click", () => this._camStop(true));
+    // camera off while the app / tab is in the background
+    this._onVis = () => {
+      if (this._mode !== "camera") return;
+      if (document.hidden) { const w = this._camWanted; this._camStop(); this._camWanted = w; }
+      else if (this._camWanted && this.isConnected) this._camStart();
+    };
+    document.addEventListener("visibilitychange", this._onVis);
     this.$("#teach").addEventListener("click", () => this._teach());
     this.$("#controls").addEventListener("click", (e) => { const b = e.target.closest("[data-act]"); if (b) this._action(b.dataset.act); });
-    this.$("#list").addEventListener("click", (e) => { const ent = e.target.dataset?.ent; if (ent) this._remove(ent); });
+    this.$("#list").addEventListener("click", (e) => { const ent = e.target.closest("[data-ent]")?.dataset.ent; if (ent) this._remove(ent); });
     // no permission prompt needed (Android/desktop): start right away
-    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission !== "function") {
-      this._perm = "ok";
-      this._sensorStart();
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission !== "function") this._perm = "ok";
+    this._applyMode();
+  }
+
+  // show the parts of the current mode; sensors / camera only run in their mode
+  _applyMode() {
+    if (!this.shadowRoot) return;
+    const T = this._t, cam = this._mode === "camera";
+    if (this._shownMode !== this._mode) {
+      if (this._shownMode) { this._target = null; this._aiming = false; this._ctrlSig = null; this._loaded = false; }
+      this._shownMode = this._mode;
     }
+    this.$(".radar").style.display = cam ? "none" : "";
+    this.$("#cam").style.display = cam ? "" : "none";
+    this.$("#teachHelp").textContent = cam ? T.camHelp : T.teachHelp;
+    this.$("#teach").textContent = cam ? T.camSave : T.save;
+    if (cam) { this._sensorStop(); this.$("#start").style.display = "none"; }
+    else { this._camStop(true); if (this._perm === "ok") this._sensorStart(); }
+    this._renderList();
   }
 
   _renderTitle() {
@@ -582,7 +841,16 @@ class PointRemoteCard extends HTMLElement {
   }
 
   _renderList() {
-    if (!this._data || !this.shadowRoot) return;
+    if (!this.shadowRoot) return;
+    if (this._mode === "camera") {
+      if (!this._cam) return;
+      const entries = Object.entries(this._cam.devices).filter(([ent]) => this._hass?.states[ent]).sort((a, b) => this._name(a[0]).localeCompare(this._name(b[0])));
+      this.$("#list").innerHTML = entries.length
+        ? entries.map(([ent, d]) => `<li><span>${d.thumb ? `<img src="${esc(d.thumb)}" alt="">` : ""}${esc(this._name(ent))}<small>${esc(this._t.views(d.views?.length || 0))}</small></span><button data-ent="${ent}" aria-label="${this._t.remove}">✕</button></li>`).join("")
+        : `<li><span class="hint">${esc(this._t.nothingYet)}</span></li>`;
+      return;
+    }
+    if (!this._data) return;
     const entries = Object.entries(this._data.targets).sort((a, b) => a[1].h - b[1].h);
     this.$("#list").innerHTML = entries.length
       ? entries.map(([ent, r]) => `<li><span>${esc(this._name(ent))}<small>${Math.round(r.h)}° · ${Math.round(r.p)}°</small></span><button data-ent="${ent}" aria-label="${this._t.remove}">✕</button></li>`).join("")
@@ -592,12 +860,25 @@ class PointRemoteCard extends HTMLElement {
   _render() {
     if (!this.shadowRoot || !this._hass) return;
     const T = this._t;
-    const ready = this._perm === "ok";
-    this.$("#start").style.display = ready ? "none" : "";
+    const cam = this._mode === "camera";
+    const ready = cam ? this._camState === "on" : this._perm === "ok";
+    this.$("#start").style.display = ready || cam ? "none" : "";
     if (this._perm === "denied") this.$("#start").textContent = T.enableAgain;
-    if (ready) this._updateTarget();
+    if (ready && !cam) this._updateTarget();
     if (this._target && !this._hass.states[this._target]) this._target = null;
-    const targets = this._data?.targets || {};
+    const targets = cam
+      ? Object.fromEntries(Object.entries(this._cam?.devices || {}).filter(([ent, d]) => d.views?.length && this._camAllowed(ent)))
+      : this._data?.targets || {};
+
+    // camera view
+    if (cam) {
+      const sb = this.$("#camStart");
+      sb.style.display = ready ? "none" : "";
+      sb.disabled = this._camState === "loading";
+      sb.textContent = this._camState === "loading" ? T.camLoading : T.camStart;
+      this.$("#camStop").style.display = ready ? "" : "none";
+      this.$("#frame").classList.toggle("hit", ready && !!this._aiming);
+    }
 
     // radar
     const scale = 100 / RADAR_DEG;
@@ -606,7 +887,7 @@ class PointRemoteCard extends HTMLElement {
       <circle r="${(RADAR_DEG / 2) * scale}" fill="none" stroke="var(--divider-color)" stroke-width=".6"/>
       <line x1="-8" y1="0" x2="8" y2="0" stroke="var(--primary-text-color)" stroke-width="1.5"/>
       <line x1="0" y1="-8" x2="0" y2="8" stroke="var(--primary-text-color)" stroke-width="1.5"/>`;
-    if (this._aim) {
+    if (this._aim && !cam) {
       for (const [ent, r] of Object.entries(targets)) {
         const st = this._hass.states[ent];
         if (!st) continue;
@@ -622,13 +903,14 @@ class PointRemoteCard extends HTMLElement {
         if (inside) svg += `<text x="${x}" y="${y - 12}" text-anchor="middle" font-size="10" fill="var(--primary-text-color)">${esc(this._name(ent))}</text>`;
       }
     }
-    this.$("#radar").innerHTML = svg;
+    if (!cam) this.$("#radar").innerHTML = svg;
 
     // target line
     const tg = this.$("#target");
     let html;
-    if (!ready) html = `<div class="info">${esc(T.tapStart)}</div>`;
-    else if (!this._aim) html = `<div class="info">${esc(T.waiting)}</div>`;
+    if (cam && !ready && !this._target) html = `<div class="info">${esc(this._camState === "loading" ? T.camLoading : T.camTap)}</div>`;
+    else if (!cam && !ready) html = `<div class="info">${esc(T.tapStart)}</div>`;
+    else if (!cam && !this._aim) html = `<div class="info">${esc(T.waiting)}</div>`;
     else if (!Object.keys(targets).length) html = `<div class="info">${esc(T.notTaught)}</div>`;
     else if (!this._target) html = `<div class="name" style="opacity:.4">—</div><div class="info">${esc(T.pointAt)}</div>`;
     else {
@@ -654,7 +936,10 @@ class PointRemoteCard extends HTMLElement {
 
     // compass hint
     let hint = "";
-    if (ready && this._aim) {
+    if (cam) {
+      if (ready && Object.keys(targets).length)
+        hint = this._aiming && this._camTop ? `${T.match} ${Math.round(this._camTop.sc * 100)} %` : T.noMatch + (this._camTop ? ` (${this._name(this._camTop.ent)} ${Math.round(this._camTop.sc * 100)} %)` : "");
+    } else if (ready && this._aim) {
       hint = `${T.direction} ${Math.round(this._aim.h)}° · ${T.tilt} ${Math.round(this._aim.p)}°`;
       if (!this._compassOk) hint += " · " + T.noCompass;
       else if (this._accuracy != null && (this._accuracy < 0 || this._accuracy > 25)) hint += " · " + T.badCompass;
