@@ -1,6 +1,6 @@
 # Point Remote Card
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/docs/marketplace/)
 [![Validate](https://github.com/onkeloki/point-remote-card/actions/workflows/validate.yml/badge.svg)](https://github.com/onkeloki/point-remote-card/actions/workflows/validate.yml)
 
 **Point your phone at a lamp, blind, TV or amplifier – and control it.**
@@ -37,7 +37,13 @@ You teach each device's direction once from a place (couch, kitchen, …), and f
 
 ## Installation
 
-### HACS (custom repository)
+### Marketplace (Home Assistant 2026.11 and newer)
+
+1. **Settings → Marketplace** → **Add from link** (upper right)
+2. GitHub link: `onkeloki/point-remote-card` → **Add** (type **Dashboard**, if asked)
+3. Open **Point Remote Card**, select **Install** and reload the browser / app
+
+### HACS (Home Assistant before 2026.11)
 
 1. HACS → ⋮ → **Custom repositories**
 2. Repository: `https://github.com/onkeloki/point-remote-card`, type **Dashboard**
