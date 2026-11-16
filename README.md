@@ -62,6 +62,8 @@ The card has a visual editor. In YAML:
 type: custom:point-remote-card
 name: Couch            # name of the place, shown as title
 id: couch              # optional storage id – set it if you want to rename the card later without re-teaching
+auto_toggle: true      # optional – toggle a device just by pointing at it (see below)
+auto_toggle_delay: 1200 # optional – how long to point before it toggles, in ms (default 1200)
 entities:              # optional – without it, every supported device can be taught
   - light.living_room
   - cover.blind_left
@@ -79,7 +81,19 @@ entities:
     positions: [0, 30, 60, 100]                   # own position presets
   - entity: media_player.amplifier
     sources: [TV, Spotify, Radio]                 # only these source buttons (false = none)
+  - entity: cover.balcony
+    auto_toggle: false                            # never toggle this one automatically
 ```
+
+### Auto toggle
+
+With `auto_toggle: true` you don't need to press anything: keep pointing at a device and a ring around the aim fills up –
+when it is full, the device toggles (on/off, open/close, scene/script/button: activate). Great for demos and exhibitions.
+
+- Pointing away and back toggles again; staying on the device does not.
+- Close calls between two devices never toggle.
+- Locks and climate devices are never toggled automatically; exclude more with `auto_toggle: false` per device.
+- Works in compass and camera mode.
 
 ### Several places, automatically
 
@@ -119,7 +133,7 @@ sections:
 - Indoor compasses are bent by speakers, radiators and steel, but since you teach and use from the same place, that error is mostly the same both times and cancels out.
 - Devices closer together than ~10–15° (seen from your place) are hard to tell apart; the card then says “close call”.
 - If the hint says the compass is inaccurate, move the phone in a figure eight.
-- **iOS needs https** for the sensor permission (e.g. Nabu Casa or your own TLS). Plain `http://homeassistant.local:8123` will not get sensor access.
+- **The sensors and the camera need https** (e.g. Nabu Casa or your own TLS) – on iOS and Android. Over plain `http://homeassistant.local:8123` the browser hides them; the card then tells you so.
 - Taught directions are stored per Home Assistant user.
 - Built and tuned for iPhone. Android uses the absolute orientation event and should work, but is untested so far – feedback welcome.
 

@@ -5,10 +5,14 @@
 // few camera views; a small image-embedding model (MediaPipe, runs on the phone) compares the live picture with them.
 // https://github.com/onkeloki/point-remote-card  –  MIT License
 
-const VERSION = "2.1.1";
+const VERSION = "2.2.0";
 const HIT_DEG = 18;       // how far off you may point
 const RADAR_DEG = 60;     // radar radius in degrees
 const DWELL_MS = 250;     // a new target must be aimed at this long before it takes over
+const AUTO_MS = 1200;     // auto toggle: aim at a device this long and it toggles
+const AUTO_REARM_MS = 600; // auto toggle: aim away at least this long before the same device can toggle again
+const AUTO_NEVER = ["lock", "climate"]; // never toggled automatically
+const RING_R = 38;        // radius of the auto-toggle progress ring (radar units)
 const DOMAINS = ["light", "cover", "media_player", "switch", "fan", "climate", "input_boolean", "lock", "scene", "script", "button", "input_button"];
 const DEFAULT_COLORS = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#00c7be", "#007aff", "#5856d6", "#af52de", "#ff2d55"];
 const DEFAULT_POSITIONS = [0, 25, 50, 75, 100];
@@ -49,6 +53,7 @@ const TEXTS = {
     description: "Point your phone at a device to control it",
     fName: "Name of this place (e.g. Couch, Kitchen)", fEntities: "Devices (empty = all)", fId: "Storage ID (keep when renaming)",
     fMode: "Mode", modeCompass: "Compass – point the top edge of the phone", modeCamera: "Camera – recognise the device in the picture",
+    fAuto: "Toggle automatically when pointing at a device", fAutoDelay: "Delay before toggling (ms)",
     camStart: "Start camera", camStop: "Stop camera", camLoading: "Starting camera …", camTap: "Tap “Start camera” and allow access.",
     camHelp: "Pick a device, aim the camera so the device fills the frame and save. Save 2–3 views from different spots and distances – the more views, the better the recognition, wherever you stand.",
     camSave: "Save view", camFirst: "Start the camera first", camError: "Camera not available: ",
@@ -78,6 +83,7 @@ const TEXTS = {
     description: "Mit dem Handy auf ein Gerät zeigen und steuern",
     fName: "Name des Platzes (z. B. Couch, Küche)", fEntities: "Geräte (leer = alle)", fId: "Speicher-ID (beim Umbenennen behalten)",
     fMode: "Modus", modeCompass: "Kompass – mit der Oberkante des Handys zeigen", modeCamera: "Kamera – Gerät im Bild erkennen",
+    fAuto: "Automatisch schalten beim Zeigen", fAutoDelay: "Wartezeit vor dem Schalten (ms)",
     camStart: "Kamera starten", camStop: "Kamera stoppen", camLoading: "Kamera startet …", camTap: "„Kamera starten“ tippen und erlauben.",
     camHelp: "Gerät wählen, die Kamera so ausrichten, dass das Gerät den Rahmen füllt, und speichern. 2–3 Ansichten von verschiedenen Plätzen und Abständen speichern – je mehr Ansichten, desto besser die Erkennung, egal wo du stehst.",
     camSave: "Ansicht speichern", camFirst: "Erst die Kamera starten", camError: "Kamera nicht verfügbar: ",
@@ -107,6 +113,7 @@ const TEXTS = {
     description: "Wijs met je telefoon een apparaat aan om het te bedienen",
     fName: "Naam van deze plek (bijv. Bank, Keuken)", fEntities: "Apparaten (leeg = alle)", fId: "Opslag-ID (behouden bij hernoemen)",
     fMode: "Modus", modeCompass: "Kompas – wijs met de bovenkant van de telefoon", modeCamera: "Camera – herken het apparaat in het beeld",
+    fAuto: "Automatisch schakelen bij het wijzen", fAutoDelay: "Wachttijd voor het schakelen (ms)",
     camStart: "Camera starten", camStop: "Camera stoppen", camLoading: "Camera start …", camTap: "Tik op „Camera starten” en sta toegang toe.",
     camHelp: "Kies een apparaat, richt de camera zo dat het apparaat het kader vult en sla op. Sla 2–3 beelden op vanaf verschillende plekken en afstanden – hoe meer beelden, hoe beter de herkenning, waar je ook staat.",
     camSave: "Beeld opslaan", camFirst: "Start eerst de camera", camError: "Camera niet beschikbaar: ",
@@ -136,6 +143,7 @@ const TEXTS = {
     description: "Pointez votre téléphone vers un appareil pour le contrôler",
     fName: "Nom de cet endroit (ex. Canapé, Cuisine)", fEntities: "Appareils (vide = tous)", fId: "ID de stockage (à garder si renommé)",
     fMode: "Mode", modeCompass: "Boussole – pointer avec le haut du téléphone", modeCamera: "Caméra – reconnaître l’appareil dans l’image",
+    fAuto: "Basculer automatiquement en pointant", fAutoDelay: "Délai avant de basculer (ms)",
     camStart: "Démarrer la caméra", camStop: "Arrêter la caméra", camLoading: "Démarrage de la caméra …", camTap: "Touchez « Démarrer la caméra » et autorisez l’accès.",
     camHelp: "Choisissez un appareil, cadrez-le pour qu’il remplisse le cadre et enregistrez. Enregistrez 2–3 vues depuis différents endroits et distances – plus il y a de vues, meilleure est la reconnaissance, où que vous soyez.",
     camSave: "Enregistrer la vue", camFirst: "Démarrez d’abord la caméra", camError: "Caméra non disponible : ",
@@ -165,6 +173,7 @@ const TEXTS = {
     description: "Apunta con tu móvil a un dispositivo para controlarlo",
     fName: "Nombre de este lugar (p. ej. Sofá, Cocina)", fEntities: "Dispositivos (vacío = todos)", fId: "ID de almacenamiento (mantener al renombrar)",
     fMode: "Modo", modeCompass: "Brújula – apuntar con el borde superior del móvil", modeCamera: "Cámara – reconocer el dispositivo en la imagen",
+    fAuto: "Alternar automáticamente al apuntar", fAutoDelay: "Espera antes de alternar (ms)",
     camStart: "Iniciar cámara", camStop: "Detener cámara", camLoading: "Iniciando cámara …", camTap: "Toca «Iniciar cámara» y permite el acceso.",
     camHelp: "Elige un dispositivo, encuadra la cámara para que el dispositivo llene el marco y guarda. Guarda 2–3 vistas desde distintos lugares y distancias – cuantas más vistas, mejor el reconocimiento, estés donde estés.",
     camSave: "Guardar vista", camFirst: "Inicia primero la cámara", camError: "Cámara no disponible: ",
@@ -194,6 +203,7 @@ const TEXTS = {
     description: "Punta il telefono verso un dispositivo per controllarlo",
     fName: "Nome di questo punto (es. Divano, Cucina)", fEntities: "Dispositivi (vuoto = tutti)", fId: "ID di salvataggio (mantienilo se rinomini)",
     fMode: "Modalità", modeCompass: "Bussola – punta con il bordo superiore del telefono", modeCamera: "Fotocamera – riconosci il dispositivo nell’immagine",
+    fAuto: "Commuta automaticamente puntando", fAutoDelay: "Attesa prima di commutare (ms)",
     camStart: "Avvia fotocamera", camStop: "Ferma fotocamera", camLoading: "Avvio fotocamera …", camTap: "Tocca «Avvia fotocamera» e consenti l’accesso.",
     camHelp: "Scegli un dispositivo, inquadralo in modo che riempia la cornice e salva. Salva 2–3 viste da punti e distanze diversi – più viste ci sono, migliore è il riconoscimento, ovunque ti trovi.",
     camSave: "Salva vista", camFirst: "Avvia prima la fotocamera", camError: "Fotocamera non disponibile: ",
@@ -254,11 +264,13 @@ class PointRemoteCard extends HTMLElement {
         { name: "mode", selector: { select: { mode: "dropdown", options: [{ value: "compass", label: T.modeCompass }, { value: "camera", label: T.modeCamera }] } } },
         { name: "name", selector: { text: {} } },
         { name: "entities", selector: { entity: { multiple: true, filter: { domain: DOMAINS } } } },
+        { name: "auto_toggle", selector: { boolean: {} } },
+        { name: "auto_toggle_delay", selector: { number: { min: 300, max: 5000, step: 100, mode: "box", unit_of_measurement: "ms" } } },
         { name: "id", selector: { text: {} } },
       ],
       computeLabel: (s, hass) => {
         const T = textsFor(hass?.locale?.language || hass?.language);
-        return { mode: T.fMode, name: T.fName, entities: T.fEntities, id: T.fId }[s.name];
+        return { mode: T.fMode, name: T.fName, entities: T.fEntities, id: T.fId, auto_toggle: T.fAuto, auto_toggle_delay: T.fAutoDelay }[s.name];
       },
     };
   }
@@ -432,6 +444,64 @@ class PointRemoteCard extends HTMLElement {
       this._cand = null;
       this._haptic("selection");
     }
+  }
+
+  // ---------- auto toggle: aim at a device for a moment and it toggles (a filling ring shows the countdown) ----------
+  _autoEligible(ent) {
+    if (!this._config.auto_toggle || !ent) return false;
+    const st = this._hass.states[ent];
+    return !!st && st.state !== "unavailable" && !AUTO_NEVER.includes(ent.split(".")[0]) && this._opts[ent]?.auto_toggle !== false;
+  }
+  _autoAiming(ent) {
+    const live = this._mode === "camera" ? this._camState === "on" : !!this._onOri;
+    return live && this.isConnected && !document.hidden && this._aiming && !this._unsure && this._target === ent;
+  }
+  _autoUpdate(ready) {
+    const now = Date.now(), a = this._auto, ent = this._target;
+    if (a?.done && ent !== a.ent) this._auto = null; // another device took over: it may start right away
+    else if (a?.done) {
+      // already toggled: wait until the user aimed away for a moment (no flip-flopping at the edge of the zone)
+      if (this._autoAiming(a.ent)) a.lost = null;
+      else if (!a.lost) a.lost = now;
+      else if (now - a.lost >= AUTO_REARM_MS) this._auto = null;
+      if (this._auto || !ready) return;
+    }
+    if (!ready || !this._autoEligible(ent) || !this._autoAiming(ent)) { if (this._auto && !this._auto.done) this._autoReset(); return; }
+    if (this._auto?.ent !== ent) {
+      this._auto = { ent, since: now };
+      if (!this._autoRaf) this._autoRaf = requestAnimationFrame(() => this._autoFrame());
+    }
+  }
+  _autoFrame() {
+    this._autoRaf = null;
+    const a = this._auto;
+    if (!a || a.done) return;
+    if (!this._autoAiming(a.ent) || !this._autoEligible(a.ent)) return this._autoReset();
+    const delay = Number(this._config.auto_toggle_delay) || AUTO_MS;
+    const p = Math.min(1, (Date.now() - a.since) / delay);
+    this._ring(p);
+    if (p < 1) { this._autoRaf = requestAnimationFrame(() => this._autoFrame()); return; }
+    a.done = true;
+    this._ring(1, true);
+    this._action("toggle");
+    this._haptic("success");
+  }
+  _autoReset() {
+    this._auto = null;
+    if (this._autoRaf) cancelAnimationFrame(this._autoRaf);
+    this._autoRaf = null;
+    this._ring(null);
+  }
+  // progress 0…1, null = hidden; done plays the confirmation pop
+  _ring(p, done) {
+    const el = this.shadowRoot?.querySelector(this._mode === "camera" ? "#ringCam" : "#ringCompass");
+    if (!el) return;
+    const fill = el.querySelector(".fill"), c = 2 * Math.PI * RING_R;
+    el.classList.toggle("run", p != null && !done);
+    if (done) { el.classList.remove("done"); void el.getBoundingClientRect(); el.classList.add("done"); }
+    else if (p != null) el.classList.remove("done");
+    fill.style.strokeDasharray = c;
+    if (p != null) fill.style.strokeDashoffset = c * (1 - p);
   }
 
   // ---------- camera ----------
@@ -729,7 +799,17 @@ class PointRemoteCard extends HTMLElement {
   ha-card { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
   .title { font-size: 20px; font-weight: 600; color: var(--primary-text-color); }
   .radar { width: 100%; max-width: 320px; aspect-ratio: 1; margin: 0 auto; }
+  .radar { position: relative; }
   .radar svg { width: 100%; height: 100%; display: block; }
+  svg.ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  svg.ring circle { fill: none; stroke-linecap: round; }
+  svg.ring .track { stroke: var(--divider-color); stroke-width: 5; opacity: 0; transition: opacity .15s; }
+  svg.ring .fill { stroke: var(--state-light-active-color, #ffb300); stroke-width: 6; transform: rotate(-90deg); opacity: 0; transition: opacity .15s; }
+  svg.ring.run .track { opacity: .6; }
+  svg.ring.run .fill { opacity: 1; }
+  svg.ring.done .fill { opacity: 1; stroke-dashoffset: 0 !important; transform-origin: 0 0; animation: ring-pop .45s ease-out forwards; }
+  .cam svg.ring .track { stroke: rgba(255,255,255,.55); }
+  @keyframes ring-pop { from { transform: rotate(-90deg) scale(1); opacity: 1; } to { transform: rotate(-90deg) scale(1.45); opacity: 0; stroke-width: 2; } }
   .target { text-align: center; min-height: 58px; }
   .target .name { font-size: 26px; font-weight: 600; color: var(--primary-text-color); }
   .target .info { font-size: 14px; color: var(--secondary-text-color); margin-top: 2px; }
@@ -774,10 +854,11 @@ class PointRemoteCard extends HTMLElement {
 <ha-card>
   <div class="title" id="title"></div>
   <button class="start" id="start">${T.enable}</button>
-  <div class="radar"><svg viewBox="-110 -110 220 220" id="radar"></svg></div>
+  <div class="radar"><svg viewBox="-110 -110 220 220" id="radar"></svg><svg class="ring" id="ringCompass" viewBox="-110 -110 220 220"><circle class="track" r="${RING_R}"/><circle class="fill" r="${RING_R}"/></svg></div>
   <div class="cam" id="cam">
     <video id="video" muted playsinline autoplay></video>
     <div class="frame" id="frame"></div>
+    <svg class="ring" id="ringCam" viewBox="-110 -110 220 220"><circle class="track" r="${RING_R}"/><circle class="fill" r="${RING_R}"/></svg>
     <button class="start" id="camStart">${T.camStart}</button>
     <button class="stop" id="camStop" aria-label="${T.camStop}"><ha-icon icon="mdi:stop"></ha-icon></button>
   </div>
@@ -944,6 +1025,7 @@ class PointRemoteCard extends HTMLElement {
       const note = !this._aiming ? " · " + T.lastAimed : this._unsure ? " · " + T.closeCall : "";
       html = `<div class="name">${esc(this._name(this._target))}</div><div class="info">${esc(this._stateText(st))}${extra}${note}</div>`;
     }
+    this._autoUpdate(ready);
     tg.classList.toggle("stale", !!this._target && !this._aiming);
     if (tg._html !== html) { tg.innerHTML = html; tg._html = html; }
 
