@@ -5,7 +5,7 @@
 // few camera views; a small image-embedding model (MediaPipe, runs on the phone) compares the live picture with them.
 // https://github.com/onkeloki/point-remote-card  –  MIT License
 
-const VERSION = "2.2.0";
+const VERSION = "2.2.1";
 const HIT_DEG = 18;       // how far off you may point
 const RADAR_DEG = 60;     // radar radius in degrees
 const DWELL_MS = 250;     // a new target must be aimed at this long before it takes over
@@ -46,7 +46,7 @@ const TEXTS = {
     pickFirst: "Pick a device first", enableFirst: "Enable sensors first", tooFew: "Not enough sensor data – try again",
     saved: (n, h, p) => `${n} saved (${h}°, tilt ${p}°)`,
     saveFailed: "Saving failed: ", denied: "Sensors not allowed: ", needHttps: " – page must be served over https",
-    noHttps: "Sensors only work over https – open Home Assistant via an https address (e.g. Home Assistant Cloud or a reverse proxy).", noData: "No sensor data – this browser or device does not provide orientation sensors.",
+    noHttps: "Sensors only work over https. No cloud needed: a local certificate is enough (e.g. the Let’s Encrypt add-on) – see “Local https” in the README.", noData: "No sensor data – this browser or device does not provide orientation sensors.",
     remove: "remove",
     turnOn: "Turn on", turnOff: "Turn off", toggle: "Toggle", activate: "Activate", run: "Run", press: "Press",
     lock: "Lock", unlock: "Unlock", playPause: "Play / Pause", mute: "Mute",
@@ -76,7 +76,7 @@ const TEXTS = {
     pickFirst: "Erst ein Gerät auswählen", enableFirst: "Erst Sensoren aktivieren", tooFew: "Zu wenig Sensordaten – nochmal versuchen",
     saved: (n, h, p) => `${n} gespeichert (${h}°, Neigung ${p}°)`,
     saveFailed: "Speichern fehlgeschlagen: ", denied: "Sensoren nicht erlaubt: ", needHttps: " – Seite muss über https laufen",
-    noHttps: "Sensoren funktionieren nur über https – Home Assistant über eine https-Adresse öffnen (z. B. Home Assistant Cloud oder Reverse Proxy).", noData: "Keine Sensordaten – dieser Browser bzw. dieses Gerät liefert keine Lagesensoren.",
+    noHttps: "Sensoren funktionieren nur über https. Eine Cloud ist dafür nicht nötig, ein lokales Zertifikat reicht (z. B. das Let’s-Encrypt-Add-on) – siehe „Local https“ in der README.", noData: "Keine Sensordaten – dieser Browser bzw. dieses Gerät liefert keine Lagesensoren.",
     remove: "entfernen",
     turnOn: "Einschalten", turnOff: "Ausschalten", toggle: "Umschalten", activate: "Aktivieren", run: "Ausführen", press: "Drücken",
     lock: "Abschließen", unlock: "Aufschließen", playPause: "Play / Pause", mute: "Stumm",
@@ -106,7 +106,7 @@ const TEXTS = {
     pickFirst: "Kies eerst een apparaat", enableFirst: "Schakel eerst de sensoren in", tooFew: "Te weinig sensordata – probeer opnieuw",
     saved: (n, h, p) => `${n} opgeslagen (${h}°, helling ${p}°)`,
     saveFailed: "Opslaan mislukt: ", denied: "Sensoren niet toegestaan: ", needHttps: " – pagina moet via https lopen",
-    noHttps: "Sensoren werken alleen via https – open Home Assistant via een https-adres (bijv. Home Assistant Cloud of een reverse proxy).", noData: "Geen sensordata – deze browser of dit apparaat levert geen oriëntatiesensoren.",
+    noHttps: "Sensoren werken alleen via https. Een cloud is niet nodig: een lokaal certificaat volstaat (bijv. de Let’s Encrypt-add-on) – zie „Local https” in de README.", noData: "Geen sensordata – deze browser of dit apparaat levert geen oriëntatiesensoren.",
     remove: "verwijderen",
     turnOn: "Aanzetten", turnOff: "Uitzetten", toggle: "Schakelen", activate: "Activeren", run: "Uitvoeren", press: "Indrukken",
     lock: "Vergrendelen", unlock: "Ontgrendelen", playPause: "Afspelen / Pauze", mute: "Dempen",
@@ -136,7 +136,7 @@ const TEXTS = {
     pickFirst: "Choisissez d’abord un appareil", enableFirst: "Activez d’abord les capteurs", tooFew: "Pas assez de données – réessayez",
     saved: (n, h, p) => `${n} enregistré (${h}°, inclinaison ${p}°)`,
     saveFailed: "Échec de l’enregistrement : ", denied: "Capteurs non autorisés : ", needHttps: " – la page doit être servie en https",
-    noHttps: "Les capteurs ne fonctionnent qu’en https – ouvrez Home Assistant via une adresse https (p. ex. Home Assistant Cloud ou un reverse proxy).", noData: "Aucune donnée des capteurs – ce navigateur ou cet appareil ne fournit pas de capteurs d’orientation.",
+    noHttps: "Les capteurs ne fonctionnent qu’en https. Pas besoin du cloud : un certificat local suffit (p. ex. le module Let’s Encrypt) – voir « Local https » dans le README.", noData: "Aucune donnée des capteurs – ce navigateur ou cet appareil ne fournit pas de capteurs d’orientation.",
     remove: "supprimer",
     turnOn: "Allumer", turnOff: "Éteindre", toggle: "Basculer", activate: "Activer", run: "Exécuter", press: "Appuyer",
     lock: "Verrouiller", unlock: "Déverrouiller", playPause: "Lecture / Pause", mute: "Muet",
@@ -166,7 +166,7 @@ const TEXTS = {
     pickFirst: "Elige primero un dispositivo", enableFirst: "Activa primero los sensores", tooFew: "Pocos datos – inténtalo de nuevo",
     saved: (n, h, p) => `${n} guardado (${h}°, inclinación ${p}°)`,
     saveFailed: "Error al guardar: ", denied: "Sensores no permitidos: ", needHttps: " – la página debe servirse por https",
-    noHttps: "Los sensores solo funcionan por https – abre Home Assistant con una dirección https (p. ej. Home Assistant Cloud o un proxy inverso).", noData: "Sin datos de los sensores – este navegador o dispositivo no ofrece sensores de orientación.",
+    noHttps: "Los sensores solo funcionan por https. No hace falta la nube: basta un certificado local (p. ej. el complemento Let’s Encrypt) – consulta «Local https» en el README.", noData: "Sin datos de los sensores – este navegador o dispositivo no ofrece sensores de orientación.",
     remove: "eliminar",
     turnOn: "Encender", turnOff: "Apagar", toggle: "Alternar", activate: "Activar", run: "Ejecutar", press: "Pulsar",
     lock: "Bloquear", unlock: "Desbloquear", playPause: "Reproducir / Pausa", mute: "Silenciar",
@@ -196,7 +196,7 @@ const TEXTS = {
     pickFirst: "Scegli prima un dispositivo", enableFirst: "Attiva prima i sensori", tooFew: "Dati insufficienti – riprova",
     saved: (n, h, p) => `${n} salvato (${h}°, inclinazione ${p}°)`,
     saveFailed: "Salvataggio non riuscito: ", denied: "Sensori non consentiti: ", needHttps: " – la pagina deve usare https",
-    noHttps: "I sensori funzionano solo via https – apri Home Assistant con un indirizzo https (ad es. Home Assistant Cloud o un reverse proxy).", noData: "Nessun dato dai sensori – questo browser o dispositivo non fornisce sensori di orientamento.",
+    noHttps: "I sensori funzionano solo via https. Il cloud non serve: basta un certificato locale (ad es. il componente aggiuntivo Let’s Encrypt) – vedi «Local https» nel README.", noData: "Nessun dato dai sensori – questo browser o dispositivo non fornisce sensori di orientamento.",
     remove: "rimuovi",
     turnOn: "Accendi", turnOff: "Spegni", toggle: "Commuta", activate: "Attiva", run: "Esegui", press: "Premi",
     lock: "Blocca", unlock: "Sblocca", playPause: "Play / Pausa", mute: "Muto",

@@ -133,7 +133,7 @@ sections:
 - Indoor compasses are bent by speakers, radiators and steel, but since you teach and use from the same place, that error is mostly the same both times and cancels out.
 - Devices closer together than ~10–15° (seen from your place) are hard to tell apart; the card then says “close call”.
 - If the hint says the compass is inaccurate, move the phone in a figure eight.
-- **The sensors and the camera need https** (e.g. Nabu Casa or your own TLS) – on iOS and Android. Over plain `http://homeassistant.local:8123` the browser hides them; the card then tells you so.
+- **The sensors and the camera need https** – on iOS and Android. Over plain `http://homeassistant.local:8123` the browser hides them; the card then tells you so. This does *not* require the cloud or exposing Home Assistant to the internet – see [Local https](#local-https-without-cloud-or-reverse-proxy).
 - Taught directions are stored per Home Assistant user.
 - Built and tuned for iPhone. Android uses the absolute orientation event and should work, but is untested so far – feedback welcome.
 
@@ -167,7 +167,24 @@ Good to know:
 - On first start the card loads the [MediaPipe](https://ai.google.dev/edge/mediapipe) image embedder (≈4 MB library + model from jsDelivr and Google, cached afterwards). For an offline setup host the files yourself and set `camera_lib` (folder of `@mediapipe/tasks-vision`) and `camera_model` (`.tflite` URL).
 - The card compares the whole frame, not just the device. Two devices that look alike *and* stand in a similar spot can be confused – then save more views or a closer one. The hint below the controls shows the current match score, which helps to tune `camera_threshold`.
 - The camera only runs while the card is visible and stops when the app goes to the background. Tap ■ to stop it.
-- Needs **https** like the compass. Tested in Chrome; in the companion apps the app must be allowed to use the camera – feedback welcome.
+- Needs **https** like the compass (see [Local https](#local-https-without-cloud-or-reverse-proxy)). Tested in Chrome; in the companion apps the app must be allowed to use the camera – feedback welcome.
+
+## Local https (without cloud or reverse proxy)
+
+Browsers only hand out the orientation sensors and the camera on secure (**https**) pages – in Chrome, Safari and the
+Companion apps alike, because the apps show the dashboard in a browser view. The card cannot work around this. But https
+doesn't mean Home Assistant Cloud or a reverse proxy, and nothing has to be reachable from the internet:
+
+1. **Let's Encrypt with a DNS challenge** – e.g. the *Let's Encrypt* or *DuckDNS* add-on. You get a real certificate for a
+   domain name that points to your local IP. No ports need to be opened, because the certificate is validated via DNS.
+   Then open Home Assistant via `https://your-name.duckdns.org:8123` (or your own domain) – entirely inside your network.
+2. **Your own certificate / local CA** – create a certificate for e.g. `homeassistant.local`, set `ssl_certificate` and
+   `ssl_key` in the `http:` section of `configuration.yaml` and install the CA certificate on your phones
+   (iOS: install the profile, then enable full trust under *Settings → General → About → Certificate Trust Settings*).
+   Works fully offline, but every device needs the CA.
+3. **Quick test on Android (Chrome browser only)** – open `chrome://flags/#unsafely-treat-insecure-origin-as-secure`,
+   enter your HA address (e.g. `http://192.168.1.10:8123`), enable it and restart Chrome. This doesn't help in the
+   Companion app or on iOS, but lets you try the card without changing your setup.
 
 ## Upgrading from zeig-licht-card 1.x
 
